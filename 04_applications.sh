@@ -4,32 +4,13 @@ set -euo pipefail
 # Load Config
 source "$(dirname "$0")/env.sh"
 
-# Root check
-if [ "$EUID" -ne 0 ]; then
-  echo -e "${RED}Please run as root (sudo).${NC}"
-  exit 1
-fi
-
-echo -e "${GREEN}=== STARTED: Xenon OS Applications & Gaming Setup ===${NC}"
-
-# --------------------------------------------------
-# Sync Assets
-# --------------------------------------------------
-echo "Syncing assets..."
-mkdir -p "$CHROOT_DIR/tmp/assets"
-if [ -d "$ASSETS_DIR" ]; then
-    cp -r "$ASSETS_DIR/"* "$CHROOT_DIR/tmp/assets/" 2>/dev/null || true
-fi
+check_root
+log_info "=== STARTED: Xenon OS Applications Setup (Lightweight + Brave) ==="
 
 # --------------------------------------------------
 # Mount Chroot Environment
 # --------------------------------------------------
-mount --bind /dev "$CHROOT_DIR/dev"
-mount --bind /dev/pts "$CHROOT_DIR/dev/pts"
-mount --bind /proc "$CHROOT_DIR/proc"
-mount --bind /sys "$CHROOT_DIR/sys"
-mount --bind /run "$CHROOT_DIR/run"
-cp -L /etc/resolv.conf "$CHROOT_DIR/etc/resolv.conf"
+mount_chroot
 
 # --------------------------------------------------
 # Enter Chroot
@@ -39,14 +20,61 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
 # --------------------------------------------------
-# Enable 32-bit Architecture (Steam / Wine)
+# Enable i386 Architecture (Gaming / Proton)
 # --------------------------------------------------
 echo "Enabling i386 architecture..."
 dpkg --add-architecture i386
 apt-get update
 
 # --------------------------------------------------
-# Gaming Stack (Ubuntu 24.04 safe)
+# Remove Heavy / Unwanted Browsers & Services
+# --------------------------------------------------
+echo "Removing unnecessary packages..."
+
+apt-get purge -y \
+    firefox \
+    chromium \
+    thunderbird \
+    apport \
+    whoopsie \
+    popularity-contest || true
+
+# --------------------------------------------------
+# Install Brave Browser (Official Repo)
+# --------------------------------------------------
+echo "Installing Brave Browser..."
+
+curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg \
+  https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
+
+echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] \
+https://brave-browser-apt-release.s3.brave.com/ stable main" \
+  > /etc/apt/sources.list.d/brave-browser-release.list
+
+apt-get update
+apt-get install -y brave-browser
+
+# --------------------------------------------------
+# Lightweight Desktop Applications
+# --------------------------------------------------
+echo "Installing essential lightweight apps..."
+
+apt-get install -y \
+    vlc \
+    gimp \
+    libreoffice-writer \
+    libreoffice-calc \
+    git \
+    curl \
+    wget \
+    vim \
+    htop \
+    p7zip-full \
+    unrar \
+    gparted
+
+# --------------------------------------------------
+# Gaming Stack (Minimal but Complete)
 # --------------------------------------------------
 echo "Installing gaming stack..."
 
@@ -64,28 +92,6 @@ apt-get install -y \
     mesa-utils
 
 # --------------------------------------------------
-# Desktop & Daily Applications
-# --------------------------------------------------
-echo "Installing desktop applications..."
-
-apt-get install -y \
-    firefox \
-    chromium \
-    vlc \
-    gimp \
-    libreoffice \
-    transmission-gtk \
-    curl \
-    wget \
-    git \
-    htop \
-    neofetch \
-    vim \
-    p7zip-full \
-    unrar \
-    gparted
-
-# --------------------------------------------------
 # Virtual Machine Guest Tools (Safe)
 # --------------------------------------------------
 echo "Installing VM guest tools..."
@@ -101,20 +107,16 @@ apt-get install -y \
     virtualbox-guest-x11 2>/dev/null || true
 
 # --------------------------------------------------
-# Steam Security / AppArmor Fix
+# Steam / AppArmor Fix
 # --------------------------------------------------
 echo "Applying Steam sysctl fix..."
 
-if [ -f /tmp/assets/configs/sysctl-steam.conf ]; then
-    cp /tmp/assets/configs/sysctl-steam.conf /etc/sysctl.d/99-steam-fix.conf
-else
-    cat > /etc/sysctl.d/99-steam-fix.conf <<SYSCTL
+cat > /etc/sysctl.d/99-steam-fix.conf <<SYSCTL
 kernel.unprivileged_userns_clone=1
 SYSCTL
-fi
 
 # --------------------------------------------------
-# Extra Build & System Utilities
+# Developer / Build Utilities (Minimal)
 # --------------------------------------------------
 apt-get install -y \
     build-essential \
@@ -123,24 +125,24 @@ apt-get install -y \
     gnupg2
 
 # --------------------------------------------------
-# Cleanup (Reduce ISO size)
+# Aggressive Cleanup (IMPORTANT for ISO size)
 # --------------------------------------------------
+echo "Cleaning system..."
+
 apt-get autoremove -y
 apt-get clean
 rm -rf /var/lib/apt/lists/*
+rm -rf /usr/share/doc/*
+rm -rf /usr/share/man/*
+rm -rf /var/cache/apt/*
 
-echo "Applications and gaming stack installed successfully."
+echo "Lightweight applications setup completed successfully."
 
 CHROOT_EOF
 
 # --------------------------------------------------
-# Cleanup Mounts
+# Unmount Chroot
 # --------------------------------------------------
-umount -lf "$CHROOT_DIR/run" 2>/dev/null || true
-umount -lf "$CHROOT_DIR/dev/pts" 2>/dev/null || true
-umount -lf "$CHROOT_DIR/dev" 2>/dev/null || true
-umount -lf "$CHROOT_DIR/proc" 2>/dev/null || true
-umount -lf "$CHROOT_DIR/sys" 2>/dev/null || true
-rm -f "$CHROOT_DIR/etc/resolv.conf"
+unmount_chroot
 
-echo -e "${GREEN}=== SUCCESS: Applications Installed ===${NC}"
+log_info "=== SUCCESS: Applications Installed (Lightweight) ==="
