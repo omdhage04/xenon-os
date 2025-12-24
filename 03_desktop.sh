@@ -4,31 +4,13 @@ set -euo pipefail
 # Load Config
 source "$(dirname "$0")/env.sh"
 
-# Root check
-if [ "$EUID" -ne 0 ]; then
-  echo -e "${RED}Please run as root (sudo).${NC}"
-  exit 1
-fi
-
-echo -e "${GREEN}=== STARTED: Xenon OS Desktop Setup (KDE Plasma) ===${NC}"
-
-# --------------------------------------------------
-# Sync Assets
-# --------------------------------------------------
-mkdir -p "$CHROOT_DIR/tmp/assets"
-if [ -d "$ASSETS_DIR" ]; then
-    cp -r "$ASSETS_DIR/"* "$CHROOT_DIR/tmp/assets/" 2>/dev/null || true
-fi
+check_root
+log_info "=== STARTED: Xenon OS Desktop Setup (GNOME Minimal) ==="
 
 # --------------------------------------------------
 # Mount Chroot Environment
 # --------------------------------------------------
-mount --bind /dev "$CHROOT_DIR/dev"
-mount --bind /dev/pts "$CHROOT_DIR/dev/pts"
-mount --bind /proc "$CHROOT_DIR/proc"
-mount --bind /sys "$CHROOT_DIR/sys"
-mount --bind /run "$CHROOT_DIR/run"
-cp -L /etc/resolv.conf "$CHROOT_DIR/etc/resolv.conf"
+mount_chroot
 
 # --------------------------------------------------
 # Enter Chroot
@@ -38,7 +20,7 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
 # --------------------------------------------------
-# ENABLE UNIVERSE + UPDATE (CRITICAL FIX)
+# Enable Universe (Required)
 # --------------------------------------------------
 apt-get update
 apt-get install -y software-properties-common
@@ -46,34 +28,34 @@ add-apt-repository universe
 apt-get update
 
 # --------------------------------------------------
-# Install KDE Plasma Desktop
+# Install GNOME (ULTRA MINIMAL – NO RECOMMENDS)
 # --------------------------------------------------
-echo "Installing KDE Plasma..."
+echo "Installing minimal GNOME desktop..."
 
-apt-get install -y \
-    kde-plasma-desktop \
-    sddm \
-    sddm-theme-breeze \
-    xorg \
-    dolphin \
-    konsole \
-    plasma-nm \
-    plasma-pa \
-    kde-spectacle \
-    kdeconnect \
-    bluedevil \
-    powerdevil \
-    systemsettings \
+apt-get install -y --no-install-recommends \
+    gnome-shell \
+    gnome-session \
+    gnome-control-center \
+    gnome-terminal \
+    nautilus \
+    gdm3 \
+    xdg-user-dirs \
+    xdg-user-dirs-gtk \
     fonts-noto-color-emoji
 
 # --------------------------------------------------
 # Enable Display Manager
 # --------------------------------------------------
-systemctl enable sddm
+systemctl enable gdm3
 systemctl set-default graphical.target
 
 # --------------------------------------------------
-# Branding
+# Enable Wayland (Default)
+# --------------------------------------------------
+sed -i 's/#WaylandEnable=false/WaylandEnable=true/' /etc/gdm3/custom.conf
+
+# --------------------------------------------------
+# Branding (Optional)
 # --------------------------------------------------
 mkdir -p /usr/share/backgrounds/xenon
 if [ -f /tmp/assets/branding/wallpaper.png ]; then
@@ -82,24 +64,24 @@ if [ -f /tmp/assets/branding/wallpaper.png ]; then
 fi
 
 # --------------------------------------------------
-# Cleanup
+# Aggressive Cleanup (IMPORTANT)
 # --------------------------------------------------
+echo "Cleaning GNOME desktop..."
+
 apt-get autoremove -y
 apt-get clean
 rm -rf /var/lib/apt/lists/*
+rm -rf /usr/share/doc/*
+rm -rf /usr/share/man/*
+rm -rf /usr/share/help/*
 
-echo "KDE Desktop installation completed successfully."
+echo "GNOME minimal desktop installation completed."
 
 CHROOT_EOF
 
 # --------------------------------------------------
-# Cleanup Mounts
+# Unmount Chroot
 # --------------------------------------------------
-umount -lf "$CHROOT_DIR/run" 2>/dev/null || true
-umount -lf "$CHROOT_DIR/dev/pts" 2>/dev/null || true
-umount -lf "$CHROOT_DIR/dev" 2>/dev/null || true
-umount -lf "$CHROOT_DIR/proc" 2>/dev/null || true
-umount -lf "$CHROOT_DIR/sys" 2>/dev/null || true
-rm -f "$CHROOT_DIR/etc/resolv.conf"
+unmount_chroot
 
-echo -e "${GREEN}=== SUCCESS: KDE Desktop Installed ===${NC}"
+log_info "=== SUCCESS: GNOME Minimal Desktop Installed ==="
